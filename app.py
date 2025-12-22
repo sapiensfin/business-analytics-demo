@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 # Налаштування сторінки
-st.set_page_config(page_title="Sapiens Financial Intelligence | Demo", layout="wide")
+st.set_page_config(page_title="SapiensFin | Demo", layout="wide")
 
 # --- 1. ГЕНЕРАЦІЯ ДАНИХ (12 МІСЯЦІВ З КАСОВИМ РОЗРИВОМ) ---
 def get_demo_data():
@@ -42,7 +42,7 @@ def get_demo_data():
 
 # --- 2. БІЧНА ПАНЕЛЬ (BRANDING & CONTROLS) ---
 with st.sidebar:
-    st.markdown("### Sapiens Financial")
+    st.markdown("### Sapiens Fin")
     st.markdown("[sapiensfin.eu](https://sapiensfin.eu)")
     st.write("---")
     st.header("🕹️ Симулятор рішень")
@@ -64,8 +64,8 @@ df.loc[df['Тип'] == '2. ВИТРАТИ', 'Сума'] *= (1 + exp_opt / 100)
 df['Місяць'] = df['Дата'].dt.strftime('%m-%Y')
 
 # --- 4. ГОЛОВНИЙ ЕКРАН ---
-st.title("🚀 Financial Strategy Demo")
-st.markdown("Інтелектуальні системи аналітики для українського бізнесу в Європі.")
+st.title("Financial Strategy Demo")
+st.markdown("Інтелектуальні системи аналітики")
 
 # Метрики
 income_total = df[df['Тип'] == '1. ПРИХОДИ']['Сума'].sum()
@@ -113,9 +113,10 @@ st.plotly_chart(fig, use_container_width=True)
 # Динамічний аналіз
 min_bal = df['Залишок'].min()
 if min_bal < 0:
-    st.error(f"🚨 Виявлено касовий розрив: {abs(min_bal):,.0f} PLN. Скористайтеся симулятором для пошуку рішення.")
+    st.error(f"🚨 Виявлено касовий розрив: {abs(min_bal):,.0f} PLN")
 else:
     st.success("✅ Модель стійка. Для детального аудиту вашого бізнесу завітайте на sapiensfin.eu")
 
 st.markdown("---")
-st.markdown(f"### [🚀 Отримати повну консультацію на sapiensfin.eu](https://sapiensfin.eu)")
+st.markdown(f"### [Отримати консультацію на sapiensfin.eu](https://sapiensfin.eu)")
+
