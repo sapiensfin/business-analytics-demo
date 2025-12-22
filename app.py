@@ -3,9 +3,9 @@ import pandas as pd
 import plotly.graph_objects as go
 
 # Налаштування сторінки
-st.set_page_config(page_title="SapiensFin | Demo Strategy", layout="wide")
+st.set_page_config(page_title="SapiensFin | Demo", layout="wide")
 
-# --- 1. ГЕНЕРАЦІЯ ДАНИХ (БАЗОВИЙ СТАН AS-IS) ---
+# --- 1. ГЕНЕРАЦІЯ ДАНИХ (12 МІСЯЦІВ З КАСОВИМ РОЗРИВОМ) ---
 def get_demo_data():
     data = []
     months = [f"2025-{m:02d}" for m in range(1, 13)]
@@ -25,8 +25,8 @@ def get_demo_data():
     for m in months:
         month_num = int(m.split('-')[1])
         
-        # Моделюємо сезонність та ризики для AS-IS (березень та жовтень — просадка)
-        revenue_factor = 0.65 if month_num in [3, 10] else 1.0
+        # Моделюємо касовий розрив: падіння виручки у березні (03) та жовтні (10)
+        revenue_factor = 0.6 if month_num in [3, 10] else 1.0
         repair_factor = 3.5 if month_num in [3, 10] else 1.0
         
         # Доходи
@@ -40,105 +40,84 @@ def get_demo_data():
             
     return pd.DataFrame(data)
 
-# --- 2. БІЧНА ПАНЕЛЬ (КЕРУВАННЯ СТРАТЕГІЄЮ) ---
+# --- 2. БІЧНА ПАНЕЛЬ (BRANDING & CONTROLS) ---
 with st.sidebar:
-    st.image("https://sapiensfin.eu/wp-content/uploads/2024/01/logo.png", width=200) # Якщо є лого
-    st.markdown("### [sapiensfin.eu](https://sapiensfin.eu)")
+    st.markdown("### Sapiens Fin")
+    st.markdown("[sapiensfin.eu](https://sapiensfin.eu)")
     st.write("---")
-    st.header("🕹️ Симулятор рішень (TO-BE)")
+    st.header("🕹️ Симулятор рішень")
     
-    # Нова логіка повзунків
-    price_inc = st.slider("Збільшуємо ціни на (%)", 0, 50, 0, help="Підвищення маржинальності при тому ж обсязі продажів")
-    cost_red = st.slider("Зменшуємо витрати на (%)", 0, 50, 0, help="Оптимізація завдяки автоматизації та прибиранню рутини")
+    # Виправлені повзунки: тільки позитивний вплив на бізнес
+    price_inc = st.slider("Збільшуємо ціни на (%)", 0, 50, 0, help="Збільшення виручки при тому ж обсязі продажів")
+    cost_red = st.slider("Зменшуємо витрати на (%)", 0, 50, 0, help="Скорочення витрат завдяки автоматизації (Python/AI)")
     
-    init_bal = st.number_input("Стартовий капітал (PLN)", value=80000)
+    init_bal = st.number_input("Стартовий капітал (PLN)", value=100000)
     st.write("---")
-    st.caption("Використовуйте повзунки, щоб побачити, як автоматизація процесів впливає на ваш капітал.")
+    st.caption("Демо-модель для стратегічного планування")
 
-# --- 3. ОБРОБКА ТА РОЗРАХУНОК TO-BE ---
-df_asis = get_demo_data()
-df_asis['Дата'] = pd.to_datetime(df_asis['Дата'])
+# --- 3. ОБРОБКА ТА СИМУЛЯЦІЯ ---
+df = get_demo_data()
+df['Дата'] = pd.to_datetime(df['Дата'])
+df['Сума'] = pd.to_numeric(df['Сума'])
 
-df_tobe = df_asis.copy()
+# Застосовуємо логіку симулятора
+df.loc[df['Тип'] == '1. ПРИХОДИ', 'Сума'] *= (1 + price_inc / 100)
+df.loc[df['Тип'] == '2. ВИТРАТИ', 'Сума'] *= (1 - cost_red / 100)
 
-# Застосовуємо стратегію TO-BE
-df_tobe.loc[df_tobe['Тип'] == '1. ПРИХОДИ', 'Сума'] *= (1 + price_inc / 100)
-df_tobe.loc[df_tobe['Тип'] == '2. ВИТРАТИ', 'Сума'] *= (1 - cost_red / 100)
+df['Місяць'] = df['Дата'].dt.strftime('%m-%Y')
 
-# Розрахунок Cash Flow для обох станів
-def calculate_cf(df_input, start_bal):
-    temp_df = df_input.sort_values('Дата').copy()
-    temp_df['Зміна'] = temp_df.apply(lambda x: x['Сума'] if 'ПРИХОДИ' in x['Тип'] else -x['Сума'], axis=1)
-    temp_df['Залишок'] = start_bal + temp_df['Зміна'].cumsum()
-    return temp_df
+# --- 4. ГОЛОВНИЙ ЕКРАН (МЕТРИКИ) ---
+st.title("Financial Strategy Demo")
+st.markdown("Інтелектуальні системи аналітики: моделювання стану **TO-BE**")
 
-df_asis_cf = calculate_cf(df_asis, init_bal)
-df_tobe_cf = calculate_cf(df_tobe, init_bal)
-
-# --- 4. ГОЛОВНИЙ ЕКРАН ---
-st.title("Financial Strategy: AS-IS vs TO-BE")
-st.markdown("Перевірте, як розумна оптимізація рятує бізнес від касових розривів.")
-
-# Метрики (порівняння)
-income_total = df_tobe[df_tobe['Тип'] == '1. ПРИХОДИ']['Су_ма'].sum() if 'Су_ма' in df_tobe else df_tobe[df_tobe['Тип'] == '1. ПРИХОДИ']['Сума'].sum()
-expense_total = df_tobe[df_tobe['Тип'] == '2. ВИТРАТИ']['Сума'].sum()
+income_total = df[df['Тип'] == '1. ПРИХОДИ']['Сума'].sum()
+expense_total = df[df['Тип'] == '2. ВИТРАТИ']['Сума'].sum()
 net_profit = income_total - expense_total
-profit_growth = net_profit - (df_asis[df_asis['Тип'] == '1. ПРИХОДИ']['Сума'].sum() - df_asis[df_asis['Тип'] == '2. ВИТРАТИ']['Сума'].sum())
 
 c1, c2, c3 = st.columns(3)
-c1.metric("Річна виручка (TO-BE)", f"{income_total:,.0f} PLN")
-c2.metric("Чистий прибуток (TO-BE)", f"{net_profit:,.0f} PLN", delta=f"{profit_growth:,.0f} PLN")
-c3.metric("Рентабельність витрат", f"{(net_profit/expense_total*100):.1f}%")
+c1.metric("Річний оборот", f"{income_total:,.0f} PLN")
+c2.metric("Чистий прибуток", f"{net_profit:,.0f} PLN")
+c3.metric("Рентабельність", f"{(net_profit/expense_total*100):.1f}%")
 
-# --- 5. ГРАФІК ПОРІВНЯННЯ ---
+# --- 5. ТАБЛИЦЯ P&L (БІЗНЕС-АНАЛІТИКА) ---
+st.subheader("📑 Річний звіт P&L")
+pnl = df.pivot_table(index=['Тип', 'Стаття'], columns='Місяць', values='Сума', aggfunc='sum', sort=False)
+
+st.dataframe(
+    pnl.style.format("{:,.0f}")
+    .background_gradient(cmap='GnBu', subset=pd.IndexSlice[('1. ПРИХОДИ', slice(None)), :])
+    .background_gradient(cmap='YlOrRd', subset=pd.IndexSlice[('2. ВИТРАТИ', slice(None)), :]),
+    use_container_width=True
+)
+
+# --- 6. CASH FLOW ГРАФІК ---
 st.divider()
-st.subheader("📉 Прогноз Cash Flow: Реальний стан vs Оптимізований")
+st.subheader("📉 Прогноз руху грошових коштів (Cash Flow)")
+
+df = df.sort_values('Дата')
+df['Зміна'] = df.apply(lambda x: x['Сума'] if 'ПРИХОДИ' in x['Тип'] else -x['Сума'], axis=1)
+df['Залишок'] = init_bal + df['Зміна'].cumsum()
 
 fig = go.Figure()
-
-# Лінія AS-IS (як є зараз)
 fig.add_trace(go.Scatter(
-    x=df_asis_cf['Дата'], y=df_asis_cf['Залишок'], 
-    mode='lines', name='Стан AS-IS (Без змін)',
-    line=dict(color='#E74C3C', width=2, dash='dot')
-))
-
-# Лінія TO-BE (після впровадження рішень)
-fig.add_trace(go.Scatter(
-    x=df_tobe_cf['Дата'], y=df_tobe_cf['Залишок'], 
+    x=df['Дата'], y=df['Залишок'], 
     mode='lines', fill='tozeroy', 
-    name='Стан TO-BE (Оптимізація)',
-    line=dict(color='#2ECC71', width=4),
-    fillcolor='rgba(46, 204, 113, 0.1)'
+    line=dict(color='#4A90E2', width=4),
+    fillcolor='rgba(74, 144, 226, 0.1)',
+    name='Баланс'
 ))
 
-# Межа касового розриву
-fig.add_hline(y=0, line_dash="dash", line_color="#000", line_width=1)
-
-fig.update_layout(
-    xaxis_title="2025 рік", 
-    yaxis_title="Баланс на рахунку (PLN)", 
-    height=550,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-)
+# Лінія касового розриву
+fig.add_hline(y=0, line_dash="dash", line_color="#E74C3C", line_width=2)
+fig.update_layout(xaxis_title="2025 рік", yaxis_title="Баланс (PLN)", height=500)
 st.plotly_chart(fig, use_container_width=True)
 
-# Аналіз розривів
-min_asis = df_asis_cf['Залишок'].min()
-min_tobe = df_tobe_cf['Залишок'].min()
-
-if min_tobe < 0:
-    st.error(f"🚨 Навіть з поточною оптимізацією можливий розрив: {abs(min_tobe):,.0f} PLN. Спробуйте ще зменшити витрати.")
-elif min_asis < 0 and min_tobe >= 0:
-    st.success(f"🎉 Вітаємо! Оптимізація дозволила уникнути касового розриву в {abs(min_asis):,.0f} PLN.")
+# Динамічний аналіз
+min_bal = df['Залишок'].min()
+if min_bal < 0:
+    st.error(f"🚨 Виявлено касовий розрив: {abs(min_bal):,.0f} PLN. Спробуйте оптимізувати витрати або переглянути ціни.")
 else:
-    st.info("💡 Модель стабільна в обох варіантах, але TO-BE значно збільшує ваш капітал.")
-
-# --- 6. ТАБЛИЦЯ P&L ---
-with st.expander("📑 Переглянути детальний звіт P&L (TO-BE)"):
-    df_tobe['Місяць'] = df_tobe['Дата'].dt.strftime('%m-%Y')
-    pnl = df_tobe.pivot_table(index=['Тип', 'Стаття'], columns='Місяць', values='Сума', aggfunc='sum', sort=False)
-    st.dataframe(pnl.style.format("{:,.0f}"), use_container_width=True)
+    st.success("✅ Модель стійка. Для детального аудиту вашого бізнесу завітайте на sapiensfin.eu")
 
 st.markdown("---")
-st.markdown(f"### [Забронювати аудит вашого бізнесу на sapiensfin.eu](https://sapiensfin.eu)")
+st.markdown(f"### [Отримати консультацію на sapiensfin.eu](https://sapiensfin.eu)")
