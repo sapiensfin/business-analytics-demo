@@ -24,10 +24,10 @@ def get_base_data():
         # Дохід
         data.append({'Date': month, 'Type': '1. ПРИХОДИ', 'Group': 'Revenue', 'Category': 'Виручка B2B', 'Amount': 580000.0 * rev_f})
         
-        # Витрати
+        # Витрати з невеликим зростанням до кінця року для різниці в діаграмах
         for group, cats in expenses.items():
             for cat, amt in cats.items():
-                val = amt * (1.0 + m_num * 0.015)
+                val = amt * (1.0 + m_num * 0.02) 
                 if cat == 'Ремонт та сервіс' and m_num in [3, 10]: val *= 2.8
                 data.append({'Date': month, 'Type': '2. ВИТРАТИ', 'Group': group, 'Category': cat, 'Amount': float(val)})
             
@@ -41,7 +41,7 @@ with st.sidebar:
     
     st.divider()
     st.subheader("💳 Дебіторська заборгованість")
-    ar_delay = st.select_slider("Затримка оплат від клієнтів (днів)", options=[0, 15, 30, 45, 60], value=0)
+    ar_delay = st.select_slider("Затримка оплат (днів)", options=[0, 15, 30, 45, 60], value=0)
     
     st.divider()
     init_bal = st.number_input("Залишок на рахунку (PLN)", value=100000)
@@ -81,7 +81,18 @@ fig_wf = go.Figure(go.Waterfall(
 ))
 st.plotly_chart(fig_wf, use_container_width=True)
 
-# 7. ТАБЛИЦЯ P&L (КОЛЬОРИ ТА ПРИБУТОК ПЕРШИМ РЯДКОМ)
+# 7. КРУГОВІ ДІАГРАМИ (ПОВЕРНУТО)
+st.divider()
+st.subheader("📊 Структура витрат: Порівняння Січень vs Грудень")
+c_p1, c_p2 = st.columns(2)
+for i, col in enumerate([c_p1, c_p2]):
+    m_target = 1 if i == 0 else 12
+    pie_data = df[(df['Type'] == '2. ВИТРАТИ') & (df['Date'].dt.month == m_target)]
+    fig = go.Figure(data=[go.Pie(labels=pie_data['Category'], values=pie_data['Amount'], hole=.4)])
+    fig.update_layout(title="Січень (Початок року)" if i == 0 else "Грудень (Прогноз)", height=400)
+    col.plotly_chart(fig, use_container_width=True)
+
+# 8. ТАБЛИЦЯ P&L
 st.divider()
 st.subheader("📑 Звіт P&L за місяцями")
 
@@ -91,45 +102,33 @@ sorted_months = sorted(df['Month'].unique(), key=lambda x: pd.to_datetime(x, for
 pnl = df.pivot_table(index=['Type', 'Group', 'Category'], columns='Month', values='Amount', aggfunc='sum')
 pnl = pnl[sorted_months]
 
-# Розрахунок прибутку
+# Прибуток першим рядком
 profit_row = pnl.loc['1. ПРИХОДИ'].sum() - pnl.loc['2. ВИТРАТИ'].sum()
 profit_df = pd.DataFrame([profit_row], index=pd.MultiIndex.from_tuples([('0. РЕЗУЛЬТАТ', 'Total', 'ЧИСТИЙ ПРИБУТОК')], names=['Type', 'Group', 'Category']))
 profit_df.columns = pnl.columns
-
-# Об'єднання
 pnl_final = pd.concat([profit_df, pnl]).sort_index()
 
-# ФУНКЦІЯ СТИЛІЗАЦІЇ
-def apply_styles(styler):
-    # 1. Чистий прибуток (Верхній рядок - Синій)
+# Стилізація кольорів
+def apply_pnl_styles(styler):
     styler.apply(lambda x: ['background-color: #3498db; color: white; font-weight: bold' if x.name[0] == '0. РЕЗУЛЬТАТ' else '' for _ in x], axis=1)
-    
-    # 2. Податки (Контрастне виділення - Темно-червоний)
     styler.apply(lambda x: ['background-color: #b71c1c; color: white; font-weight: bold' if x.name[1] == 'Taxes' else '' for _ in x], axis=1)
-    
-    # 3. Доходи (Зелено-блакитний градієнт GnBu)
     styler.background_gradient(cmap='GnBu', subset=pd.IndexSlice[('1. ПРИХОДИ', slice(None), slice(None)), :])
-    
-    # 4. Витрати (Жовто-червоний градієнт YlOrRd)
     styler.background_gradient(cmap='YlOrRd', subset=pd.IndexSlice[('2. ВИТРАТИ', ['Fixed', 'Variable'], slice(None)), :])
-    
     return styler
 
-st.dataframe(apply_styles(pnl_final.style.format("{:,.0f}")), use_container_width=True)
+st.dataframe(apply_pnl_styles(pnl_final.style.format("{:,.0f}")), use_container_width=True)
 
 # Кнопка завантаження
-csv = pnl_final.to_csv().encode('utf-8-sig')
 st.download_button(
-    label="📥 Завантажити повний звіт у CSV (Excel)",
-    data=csv,
+    label="📥 Завантажити звіт у CSV (Excel)",
+    data=pnl_final.to_csv().encode('utf-8-sig'),
     file_name='SapiensFin_Full_Report.csv',
     mime='text/csv'
 )
 
-# 8. CASH FLOW
+# 9. CASH FLOW
 st.divider()
-st.subheader("📉 Прогноз руху грошових коштів (Cash Flow)")
-
+st.subheader("📉 Прогноз Cash Flow")
 df_cf = df.copy()
 if ar_delay > 0:
     df_cf.loc[df_cf['Type'] == '1. ПРИХОДИ', 'Date'] += pd.Timedelta(days=ar_delay)
@@ -144,6 +143,6 @@ fig_cf.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Ка�
 st.plotly_chart(fig_cf, use_container_width=True)
 
 if daily_cf['Balance'].min() < 0:
-    st.error(f"🚨 Виявлено ризик касового розриву: {abs(daily_cf['Balance'].min()):,.0f} PLN. Необхідно залучити обігові кошти.")
+    st.error(f"🚨 Виявлено ризик касового розриву: {abs(daily_cf['Balance'].min()):,.0f} PLN.")
 else:
     st.success("✅ Обігових коштів достатньо для стабільної роботи.")
