@@ -1,20 +1,17 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
-# 1. Налаштування сторінки
+# Налаштування сторінки
 st.set_page_config(page_title="SapiensFin | Demo", layout="wide")
 
-# Очищення кешу при зміні структури (допомагає уникнути KeyError)
-st.cache_data.clear()
-
-# 2. ГЕНЕРАЦІЯ ДАНИХ
-@st.cache_data
-def get_data():
+# --- 1. ГЕНЕРАЦІЯ ДАНИХ ---
+def get_demo_data():
     data = []
-    months = pd.date_range(start="2025-01-01", periods=12, freq='MS')
+    months = [f"2025-{m:02d}" for m in range(1, 13)]
     
-    categories = {
+    expense_categories = {
         'Оренда та склад': 55000,
         'Зарплата офіс': 65000,
         'Зарплата водії': 180000,
@@ -26,114 +23,128 @@ def get_data():
         'Амортизація': 10000
     }
 
-    for month in months:
-        m_num = month.month
-        # Сезонні коефіцієнти
-        rev_f = 0.6 if m_num in [3, 10] else 1.0
-        rep_f = 3.5 if m_num in [3, 10] else 1.0
+    for m in months:
+        month_num = int(m.split('-')[1])
+        revenue_factor = 0.6 if month_num in [3, 10] else 1.0
+        repair_factor = 3.5 if month_num in [3, 10] else 1.0
         
         # Доходи
-        data.append({'Дата': month, 'Тип': '1. ДОХОДИ', 'Стаття': 'Виручка (B2B)', 'Значення': float(600000 * rev_f)})
+        data.append({'Дата': f'{m}-05', 'Тип': '1. ПРИХОДИ', 'Стаття': 'Виручка (B2B)', 'Сума': 600000 * revenue_factor})
         
         # Витрати
-        for cat, amt in categories.items():
-            val = amt * rep_f if cat == 'Ремонт та сервіс' else amt
-            data.append({'Дата': month, 'Тип': '2. ВИТРАТИ', 'Стаття': cat, 'Значення': float(val)})
+        for cat, amt in expense_categories.items():
+            val = amt
+            if cat == 'Ремонт та сервіс': val *= repair_factor
+            data.append({'Дата': f'{m}-15', 'Тип': '2. ВИТРАТИ', 'Стаття': cat, 'Сума': val})
             
     return pd.DataFrame(data)
 
-# 3. БІЧНА ПАНЕЛЬ
+# --- 2. БІЧНА ПАНЕЛЬ ---
 with st.sidebar:
-    st.markdown("### 🚀 Sapiens Fin")
+    st.markdown("### Sapiens Fin")
+    st.markdown("[sapiensfin.eu](https://sapiensfin.eu)")
     st.write("---")
-    st.header("🕹️ Симулятор")
-    price_inc = st.slider("Збільшення цін (%)", 0, 50, 0)
-    cost_red = st.slider("Оптимізація витрат (%)", 0, 50, 0)
+    st.header("🕹️ Симулятор рішень")
+    
+    price_inc = st.slider("Збільшуємо ціни на (%)", 0, 50, 0)
+    cost_red = st.slider("Зменшуємо витрати на (%)", 0, 50, 0)
+    
     init_bal = st.number_input("Стартовий капітал (PLN)", value=100000)
+    st.write("---")
+    st.caption("Демо-модель для стратегічного планування")
 
-# 4. ОБРОБКА
-df = get_data().copy()
+# --- 3. ОБРОБКА ДАНИХ ---
+df = get_demo_data()
+df['Дата'] = pd.to_datetime(df['Дата'])
+df['Сума'] = pd.to_numeric(df['Сума'])
 
-# Симуляція (використовуємо 'Значення')
-df.loc[df['Тип'] == '1. ДОХОДИ', 'Значення'] *= (1 + price_inc / 100)
-df.loc[df['Тип'] == '2. ВИТРАТИ', 'Значення'] *= (1 - cost_red / 100)
+# Застосовуємо симуляцію
+df.loc[df['Тип'] == '1. ПРИХОДИ', 'Сума'] *= (1 + price_inc / 100)
+df.loc[df['Тип'] == '2. ВИТРАТИ', 'Сума'] *= (1 - cost_red / 100)
 
 df['Місяць'] = df['Дата'].dt.strftime('%m-%Y')
 
-# Метрики
-total_rev = df[df['Тип'] == '1. ДОХОДИ']['Значення'].sum()
-total_exp = df[df['Тип'] == '2. ВИТРАТИ']['Значення'].sum()
-profit = total_rev - total_exp
-ros = (profit / total_rev * 100) if total_rev > 0 else 0
+# --- 4. ГОЛОВНИЙ ЕКРАН (МЕТРИКИ) ---
+st.title("Financial Strategy Demo")
+st.markdown("Інтелектуальні системи аналітики: моделювання стану **TO-BE**")
 
-# 5. ВІДОБРАЖЕННЯ
-st.title("Financial Strategy Dashboard")
+income_total = df[df['Тип'] == '1. ПРИХОДИ']['Сума'].sum()
+expense_total = df[df['Тип'] == '2. ВИТРАТИ']['Сума'].sum()
+net_profit = income_total - expense_total
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Річний оборот", f"{total_rev:,.0f} PLN")
-col2.metric("Чистий прибуток", f"{profit:,.0f} PLN")
-col3.metric("Рентабельність (ROS)", f"{ros:.1f}%")
+c1, c2, c3 = st.columns(3)
+c1.metric("Річний оборот", f"{income_total:,.0f} PLN")
+c2.metric("Чистий прибуток", f"{net_profit:,.0f} PLN")
+c3.metric("Рентабельність", f"{(net_profit/expense_total*100):.1f}%")
 
-# 6. WATERFALL CHART
-st.divider()
-st.subheader("💎 Waterfall: Від виручки до прибутку")
-exp_agg = df[df['Тип'] == '2. ВИТРАТИ'].groupby('Стаття')['Значення'].sum().sort_values(ascending=False)
-
-fig_wf = go.Figure(go.Waterfall(
-    measure = ["relative"] * (len(exp_agg) + 1) + ["total"],
-    x = ["Виручка"] + list(exp_agg.index) + ["Чистий прибуток"],
-    y = [total_rev] + [-v for v in exp_agg.values] + [0],
-    connector = {"line":{"color":"rgba(63, 63, 63, 0.5)"}},
-))
-st.plotly_chart(fig_wf, use_container_width=True)
-
-# 7. КРУГОВІ ДІАГРАМИ
-st.divider()
-st.subheader("📊 Структура витрат: Порівняння")
-p_col1, p_col2 = st.columns(2)
-
-for i, col in enumerate([p_col1, p_col2]):
-    m_target = 1 if i == 0 else 12
-    p_data = df[(df['Тип'] == '2. ВИТРАТИ') & (df['Дата'].dt.month == m_target)]
-    fig = go.Figure(data=[go.Pie(labels=p_data['Стаття'], values=p_data['Значення'], hole=.4)])
-    fig.update_layout(title="Січень" if i == 0 else "Грудень", height=380)
-    col.plotly_chart(fig, use_container_width=True)
-
-# 8. P&L ТАБЛИЦЯ (ВИПРАВЛЕНО KeyError)
-st.divider()
-st.subheader("📑 Звіт P&L за місяцями")
-
-# Використовуємо 'Значення', що відповідає DF
-pnl = df.pivot_table(
-    index=['Тип', 'Стаття'], 
-    columns='Місяць', 
-    values='Значення', 
-    aggfunc='sum'
-)
-
-# Сортування колонок
-sorted_months = sorted(df['Місяць'].unique(), key=lambda x: pd.to_datetime(x, format='%m-%Y'))
-pnl = pnl[sorted_months]
+# --- 5. ТАБЛИЦЯ P&L ---
+st.subheader("📑 Річний звіт P&L")
+pnl = df.pivot_table(index=['Тип', 'Стаття'], columns='Місяць', values='Сума', aggfunc='sum', sort=False)
 
 st.dataframe(
     pnl.style.format("{:,.0f}")
-    .background_gradient(cmap='Greens', subset=pd.IndexSlice[('1. ДОХОДИ', slice(None)), :])
-    .background_gradient(cmap='Reds', subset=pd.IndexSlice[('2. ВИТРАТИ', slice(None)), :]),
+    .background_gradient(cmap='GnBu', subset=pd.IndexSlice[('1. ПРИХОДИ', slice(None)), :])
+    .background_gradient(cmap='YlOrRd', subset=pd.IndexSlice[('2. ВИТРАТИ', slice(None)), :]),
     use_container_width=True
 )
 
-# 9. CASH FLOW
+# --- 6. НОВИЙ БЛОК: КРУГОВІ ДІАГРАМИ ВИТРАТ ---
 st.divider()
-st.subheader("📉 Прогноз Cash Flow")
-df['Change'] = df.apply(lambda x: x['Значення'] if 'ДОХОДИ' in x['Тип'] else -x['Значення'], axis=1)
-cf_daily = df.groupby('Дата')['Change'].sum().reset_index()
-cf_daily['Balance'] = init_bal + cf_daily['Change'].cumsum()
+st.subheader("📊 Структура витрат: Початок vs Кінець року")
+
+# Підготовка даних для діаграм
+expenses_jan = df[(df['Тип'] == '2. ВИТРАТИ') & (df['Дата'].dt.month == 1)]
+expenses_dec = df[(df['Тип'] == '2. ВИТРАТИ') & (df['Дата'].dt.month == 12)]
+
+col_pie1, col_pie2 = st.columns(2)
+
+with col_pie1:
+    fig_pie_jan = go.Figure(data=[go.Pie(
+        labels=expenses_jan['Стаття'], 
+        values=expenses_jan['Сума'], 
+        hole=.4,
+        title="Січень"
+    )])
+    fig_pie_jan.update_layout(showlegend=True, height=400, margin=dict(t=0, b=0, l=0, r=0))
+    st.plotly_chart(fig_pie_jan, use_container_width=True)
+
+with col_pie2:
+    fig_pie_dec = go.Figure(data=[go.Pie(
+        labels=expenses_dec['Стаття'], 
+        values=expenses_dec['Сума'], 
+        hole=.4,
+        title="Грудень"
+    )])
+    fig_pie_dec.update_layout(showlegend=True, height=400, margin=dict(t=0, b=0, l=0, r=0))
+    st.plotly_chart(fig_pie_dec, use_container_width=True)
+
+# --- 7. CASH FLOW ГРАФІК ---
+st.divider()
+st.subheader("📉 Прогноз руху грошових коштів (Cash Flow)")
+
+df = df.sort_values('Дата')
+df['Зміна'] = df.apply(lambda x: x['Сума'] if 'ПРИХОДИ' in x['Тип'] else -x['Сума'], axis=1)
+df['Залишок'] = init_bal + df['Зміна'].cumsum()
 
 fig_cf = go.Figure()
-fig_cf.add_trace(go.Scatter(x=cf_daily['Дата'], y=cf_daily['Balance'], fill='tozeroy', line_color='#00CC96'))
+fig_cf.add_trace(go.Scatter(
+    x=df['Дата'], y=df['Залишок'], 
+    mode='lines', fill='tozeroy', 
+    line=dict(color='#4A90E2', width=4),
+    fillcolor='rgba(74, 144, 226, 0.1)',
+    name='Баланс'
+))
+
+fig_cf.add_hline(y=0, line_dash="dash", line_color="#E74C3C", line_width=2)
+fig_cf.update_layout(xaxis_title="2025 рік", yaxis_title="Баланс (PLN)", height=500)
 st.plotly_chart(fig_cf, use_container_width=True)
 
-if cf_daily['Balance'].min() < 0:
-    st.error(f"🚨 Касовий розрив: {cf_daily['Balance'].min():,.0f} PLN")
+# Аналіз розриву
+min_bal = df['Залишок'].min()
+if min_bal < 0:
+    st.error(f"🚨 Виявлено касовий розрив: {abs(min_bal):,.0f} PLN")
 else:
-    st.success("✅ Фінансова модель стійка.")
+    st.success("✅ Модель стійка. Для аудиту вашого бізнесу завітайте на sapiensfin.eu")
+
+st.markdown("---")
+st.markdown(f"### [Обговорити ваш проєкт](https://sapiensfin.eu)")
