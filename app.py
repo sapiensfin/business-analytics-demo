@@ -2,120 +2,125 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# 1. Налаштування
-st.set_page_config(page_title="SapiensFin | Demo", layout="wide")
+# 1. Налаштування сторінки
+st.set_page_config(page_title="SapiensFin | Professional Demo", layout="wide")
 
-# 2. Очищення кешу (важливо для виправлення помилки)
-st.cache_data.clear()
-
-# 3. ГЕНЕРАЦІЯ ДАНИХ
+# 2. ГЕНЕРАЦІЯ ДАНИХ (Використовуємо латиницю для стабільності)
 @st.cache_data
-def load_data():
+def get_base_data():
     data = []
     months = pd.date_range(start="2025-01-01", periods=12, freq='MS')
     
-    # Витрати
-    exp_cats = {
-        'Оренда': 55000, 'Зарплати': 245000, 'Паливо': 95000, 
-        'Лізинг': 75000, 'Ремонт': 25000, 'Маркетинг': 20000
+    expense_categories = {
+        'Rent & Warehouse': 55000,
+        'Office Salary': 65000,
+        'Drivers Salary': 180000,
+        'Fuel': 95000,
+        'Leasing': 75000,
+        'Repairs & Service': 25000,
+        'Marketing': 20000,
+        'Taxes': 55000,
+        'Depreciation': 10000
     }
 
-    for m in months:
-        m_num = m.month
-        # Сезонність
+    for month in months:
+        m_num = month.month
         rev_f = 0.6 if m_num in [3, 10] else 1.0
         rep_f = 3.5 if m_num in [3, 10] else 1.0
         
-        # ДОХІД
-        data.append({'Date': m, 'Type': '1. ПРИХОДИ', 'Category': 'Виручка', 'Amount': float(600000 * rev_f)})
+        # Дохід
+        data.append({'Date': month, 'Type': 'Income', 'Category': 'B2B Revenue', 'Amount': 600000.0 * rev_f})
         
-        # ВИТРАТИ
-        for cat, amt in exp_cats.items():
-            val = amt * rep_f if cat == 'Ремонт' else amt
-            data.append({'Date': m, 'Type': '2. ВИТРАТИ', 'Category': cat, 'Amount': float(val)})
+        # Витрати
+        for cat, amt in expense_categories.items():
+            val = amt * rep_f if cat == 'Repairs & Service' else amt
+            data.append({'Date': month, 'Type': 'Expense', 'Category': cat, 'Amount': float(val)})
             
     return pd.DataFrame(data)
 
-# 4. БІЧНА ПАНЕЛЬ
+# 3. БІЧНА ПАНЕЛЬ
 with st.sidebar:
     st.header("🕹️ Симулятор")
-    p_inc = st.slider("Ріст цін (%)", 0, 50, 0)
-    c_red = st.slider("Оптимізація витрат (%)", 0, 50, 0)
-    st.write("---")
-    st.markdown("[sapiensfin.eu](https://sapiensfin.eu)")
+    price_inc = st.slider("Збільшення цін (%)", 0, 50, 0)
+    cost_red = st.slider("Оптимізація витрат (%)", 0, 50, 0)
+    init_bal = st.number_input("Стартовий капітал (PLN)", value=100000)
 
-# 5. ОБРОБКА
-df = load_data().copy()
+# 4. ОБРОБКА
+df_base = get_base_data()
+df = df_base.copy()
 
-# Застосовуємо симуляцію (використовуємо 'Amount')
-df.loc[df['Type'] == '1. ПРИХОДИ', 'Amount'] *= (1 + p_inc / 100)
-df.loc[df['Type'] == '2. ВИТРАТИ', 'Amount'] *= (1 - c_red / 100)
+# Застосовуємо зміни
+df.loc[df['Type'] == 'Income', 'Amount'] *= (1 + price_inc / 100)
+df.loc[df['Type'] == 'Expense', 'Amount'] *= (1 - cost_red / 100)
 
-df['Month_Str'] = df['Date'].dt.strftime('%m-%Y')
+df['Month_Year'] = df['Date'].dt.strftime('%m-%Y')
 
-# Метрики
-total_inc = df[df['Type'] == '1. ПРИХОДИ']['Amount'].sum()
-total_exp = df[df['Type'] == '2. ВИТРАТИ']['Amount'].sum()
+# Розрахунок метрик
+total_inc = df[df['Type'] == 'Income']['Amount'].sum()
+total_exp = df[df['Type'] == 'Expense']['Amount'].sum()
 profit = total_inc - total_exp
+ros = (profit / total_inc * 100) if total_inc > 0 else 0
 
-# 6. ВІДОБРАЖЕННЯ
+# 5. ВІДОБРАЖЕННЯ МЕТРИК
 st.title("Financial Strategy Dashboard")
+c1, c2, c3 = st.columns(3)
+c1.metric("Річний оборот", f"{total_inc:,.0f} PLN")
+c2.metric("Чистий прибуток", f"{profit:,.0f} PLN")
+c3.metric("Рентабельність (ROS)", f"{ros:.1f}%")
 
-m1, m2, m3 = st.columns(3)
-m1.metric("Оборот", f"{total_inc:,.0f} PLN")
-m2.metric("Прибуток", f"{profit:,.0f} PLN")
-m3.metric("Рентабельність", f"{(profit/total_inc*100):.1f}%")
-
-# 7. WATERFALL (Наглядно для власника)
-st.divider()
-st.subheader("💎 Waterfall: Від виручки до чистого прибутку")
-exp_agg = df[df['Type'] == '2. ВИТРАТИ'].groupby('Category')['Amount'].sum().sort_values(ascending=False)
-
+# 6. WATERFALL CHART
+st.subheader("💎 Формування прибутку")
+exp_summary = df[df['Type'] == 'Expense'].groupby('Category')['Amount'].sum().sort_values(ascending=False)
 fig_wf = go.Figure(go.Waterfall(
-    measure = ["relative"] * (len(exp_agg) + 1) + ["total"],
-    x = ["Виручка"] + list(exp_agg.index) + ["Прибуток"],
-    y = [total_inc] + [-v for v in exp_agg.values] + [0],
+    measure = ["relative"] * (len(exp_summary) + 1) + ["total"],
+    x = ["Виручка"] + list(exp_summary.index) + ["Прибуток"],
+    y = [total_inc] + [-v for v in exp_summary.values] + [0],
 ))
 st.plotly_chart(fig_wf, use_container_width=True)
 
-# 8. ПОРІВНЯННЯ СТРУКТУРИ (Кругові діаграми)
+# 7. КРУГОВІ ДІАГРАМИ
 st.divider()
 st.subheader("📊 Структура витрат: Початок vs Кінець року")
-c_p1, c_p2 = st.columns(2)
-
-for i, col in enumerate([c_p1, c_p2]):
-    target_m = 1 if i == 0 else 12
-    p_data = df[(df['Type'] == '2. ВИТРАТИ') & (df['Date'].dt.month == target_m)]
+cp1, cp2 = st.columns(2)
+for i, col in enumerate([cp1, cp2]):
+    m = 1 if i == 0 else 12
+    p_data = df[(df['Type'] == 'Expense') & (df['Date'].dt.month == m)]
     fig = go.Figure(data=[go.Pie(labels=p_data['Category'], values=p_data['Amount'], hole=.4)])
-    fig.update_layout(title="Січень" if i == 0 else "Грудень", height=380)
+    fig.update_layout(title="Січень" if i == 0 else "Грудень")
     col.plotly_chart(fig, use_container_width=True)
 
-# 9. ТАБЛИЦЯ P&L (БЕЗ ПОМИЛОК)
+# 8. ТАБЛИЦЯ P&L (БЕЗПЕЧНИЙ ПІВОТ)
 st.divider()
-st.subheader("📑 Звіт P&L за місяцями")
+st.subheader("📑 Звіт P&L")
 
-# Використовуємо ТОЧНІ назви стовпців: 'Type', 'Category', 'Month_Str', 'Amount'
+# Створюємо півот таблицю
+# Використовуємо назви колонок, які ТОЧНО є в DF: 'Type', 'Category', 'Month_Year', 'Amount'
 pnl = df.pivot_table(
     index=['Type', 'Category'], 
-    columns='Month_Str', 
+    columns='Month_Year', 
     values='Amount', 
     aggfunc='sum'
 )
 
-# Хронологічне сортування
-month_order = sorted(df['Month_Str'].unique(), key=lambda x: pd.to_datetime(x, format='%m-%Y'))
-pnl = pnl[month_order]
+# Сортуємо колонки по датах
+cols_sorted = sorted(df['Month_Year'].unique(), key=lambda x: pd.to_datetime(x, format='%m-%Y'))
+pnl = pnl[cols_sorted]
 
-st.dataframe(
-    pnl.style.format("{:,.0f}").background_gradient(cmap='RdYlGn', axis=1), 
-    use_container_width=True
-)
+# Відображення
+st.dataframe(pnl.style.format("{:,.0f}").background_gradient(cmap='RdYlGn'), use_container_width=True)
 
-# 10. CASH FLOW
+# 9. CASH FLOW
 st.divider()
-st.subheader("📉 Прогноз залишків на рахунку")
-df['Flow'] = df.apply(lambda x: x['Amount'] if 'ПРИХОДИ' in x['Type'] else -x['Amount'], axis=1)
-daily_bal = df.groupby('Date')['Flow'].sum().reset_index()
-daily_bal['Balance'] = 100000 + daily_bal['Flow'].cumsum()
+st.subheader("📉 Прогноз Cash Flow")
+df['Change'] = df.apply(lambda x: x['Amount'] if x['Type'] == 'Income' else -x['Amount'], axis=1)
+cf_data = df.groupby('Date')['Change'].sum().reset_index()
+cf_data['Balance'] = init_bal + cf_data['Change'].cumsum()
 
-st.line_chart(daily_bal.set_index('Date')['Balance'])
+fig_cf = go.Figure()
+fig_cf.add_trace(go.Scatter(x=cf_data['Date'], y=cf_data['Balance'], fill='tozeroy', line_color='#00CC96'))
+st.plotly_chart(fig_cf, use_container_width=True)
+
+if cf_data['Balance'].min() < 0:
+    st.error(f"🚨 Касовий розрив: {abs(cf_data['Balance'].min()):,.0f} PLN")
+else:
+    st.success("✅ Модель стійка")
