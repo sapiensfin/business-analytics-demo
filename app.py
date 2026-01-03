@@ -119,7 +119,7 @@ def apply_pnl_styles(styler):
     return styler
 
 st.dataframe(apply_pnl_styles(pnl_final.style.format("{:,.0f}")), use_container_width=True)
-st.caption("**Опис:** Повний помісячний звіт. Кольорові градієнти підсвічують "гарячі" зони витрат.")
+st.caption("**Опис:** Повний помісячний звіт. Кольорові градієнти підсвічують 'гарячі' зони витрат.")
 
 # --- CASH FLOW ---
 st.divider()
@@ -131,4 +131,5 @@ daily_cf = df_cf.groupby('Date')['Net'].sum().sort_index().reset_index()
 daily_cf['Balance'] = init_bal + daily_cf['Net'].cumsum()
 st.plotly_chart(go.Figure(go.Scatter(x=daily_cf['Date'], y=daily_cf['Balance'], fill='tozeroy', line_color='#2E86C1')), use_container_width=True)
 st.caption("**Опис:** Прогноз реальних грошей у касі. Ризик касового розриву підсвічується червоною лінією.")
+
 
